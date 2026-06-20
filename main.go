@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gorilla/mux"
 	"golang.org/x/sys/windows/svc"
@@ -23,6 +26,12 @@ var (
 	configPath string
 	dbConfig   DatabaseConfig
 	testMode   bool
+	enableFoto bool
+	cameraIP   string
+	cameraPort string
+	cameraUser string
+	cameraPass string
+	photoDir   string
 )
 
 type DatabaseConfig struct {
@@ -93,9 +102,18 @@ func loadConfig() error {
 
 	appSection := cfg.Section("APP")
 	testMode = appSection.Key("test_mode").MustBool(false)
+	enableFoto = appSection.Key("enablefoto").MustBool(false)
+
+	cameraSection := cfg.Section("CAMERA")
+	cameraIP = cameraSection.Key("camera_ip").String()
+	cameraPort = cameraSection.Key("camera_port").String()
+	cameraUser = cameraSection.Key("camera_user").String()
+	cameraPass = cameraSection.Key("camera_pass").String()
+	photoDir = cameraSection.Key("photo_dir").String()
 
 	log.Printf("Configuration loaded from: %s", configPath)
 	log.Printf("Test mode: %v", testMode)
+	log.Printf("Enable foto: %v", enableFoto)
 	return nil
 }
 
@@ -226,6 +244,68 @@ func activateHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "OK")
+
+	// Take photo if enabled
+	if enableFoto {
+		go takefoto(cardNum)
+	}
+}
+
+func takefoto(cardNum string) {
+	// Create photos directory if it doesn't exist
+	if err := os.MkdirAll(photoDir, 0755); err != nil {
+		log.Printf("Failed to create photo directory: %v", err)
+		return
+	}
+
+	// Generate filename with card number and timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("%s_%s.jpg", cardNum, timestamp)
+	filepath := filepath.Join(photoDir, filename)
+
+	// Build camera snapshot URL
+	cameraURL := fmt.Sprintf("http://%s:%s/cgi-bin/snapshot.cgi", cameraIP, cameraPort)
+
+	// Create HTTP request
+	req, err := http.NewRequest("GET", cameraURL, nil)
+	if err != nil {
+		log.Printf("Failed to create camera request: %v", err)
+		return
+	}
+
+	// Add basic authentication
+	auth := base64.StdEncoding.EncodeToString([]byte(cameraUser + ":" + cameraPass))
+	req.Header.Add("Authorization", "Basic "+auth)
+
+	// Send request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to capture photo from camera: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Camera returned status %d", resp.StatusCode)
+		return
+	}
+
+	// Create output file
+	outFile, err := os.Create(filepath)
+	if err != nil {
+		log.Printf("Failed to create photo file: %v", err)
+		return
+	}
+	defer outFile.Close()
+
+	// Copy image data to file
+	if _, err := io.Copy(outFile, resp.Body); err != nil {
+		log.Printf("Failed to save photo: %v", err)
+		return
+	}
+
+	log.Printf("Photo saved successfully: %s", filepath)
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {

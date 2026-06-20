@@ -152,14 +152,14 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 
 	// First, check if the card exists in the database
 	var status int
-	query := "SELECT Status FROM xconfigsaleszonesareaobjects WHERE Id = ?"
+	query := "SELECT Status FROM xconfigsalezonesareaobjects WHERE Id = ?"
 	err := db.QueryRow(query, cardNum).Scan(&status)
 
 	if err == nil {
 		// Card found, check if status is 0
 		if status == 0 {
 			// Update status to 4
-			updateQuery := "UPDATE xconfigsaleszonesareaobjects SET Status = 4 WHERE Id = ?"
+			updateQuery := "UPDATE xconfigsalezonesareaobjects SET Status = 4 WHERE Id = ?"
 			_, err = db.Exec(updateQuery, cardNum)
 			if err != nil {
 				return false, fmt.Errorf("failed to update card status: %w", err)
@@ -174,7 +174,7 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 	}
 
 	// Card doesn't exist or status != 0, create new entry
-	insertQuery := `INSERT INTO xconfigsaleszonesareaobjects
+	insertQuery := `INSERT INTO xconfigsalezonesareaobjects
 		(Id, SaleZoneAreaId, Description, Status, Total, SubTotalReference,
 		XPrinter1, XPrinter2, XPrinter3, XPrinter4, XPrinter5, XPrinter6, XPrinter7, XPrinter8,
 		XPrinter9, XPrinter10, XPrinter11, XPrinter12, XPrinter13, XPrinter14, XPrinter15,
@@ -187,7 +187,7 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 		ServiceTxSuspended, PrintOrderOnCloseAccount, CloudSyncStamp)
 		VALUES (?, 1, ?, 4, 0.000, '',
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		42, 15, 0, 1, 0.000000, '', 0, '0', NOW(), '0001-01-01 00:00:00', 0, '0001-01-01 00:00:00',
+		42, 15, 0, 1, 0.000000, '', 0, '0', NOW(), '0001-01-01 00:00:00', 0, '2024-05-26 21:19:35',
 		0, 0, 0, 0, 1, 0, 0, 0, 8, 0, '00000000-0000-0000-0000-000000000000', 0, 0, NULL)`
 
 	_, err = db.Exec(insertQuery, cardNum, cardNum)
