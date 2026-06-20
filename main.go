@@ -251,7 +251,7 @@ func uninstall() {
 	}
 	defer s.Close()
 
-	_, err = s.Delete()
+	err = s.Delete()
 	if err != nil {
 		log.Fatalf("failed to delete service: %v", err)
 	}
