@@ -22,6 +22,7 @@ const (
 var (
 	configPath string
 	dbConfig   DatabaseConfig
+	testMode   bool
 )
 
 type DatabaseConfig struct {
@@ -90,7 +91,11 @@ func loadConfig() error {
 		Pass: section.Key("db_pass").String(),
 	}
 
+	appSection := cfg.Section("APP")
+	testMode = appSection.Key("test_mode").MustBool(false)
+
 	log.Printf("Configuration loaded from: %s", configPath)
+	log.Printf("Test mode: %v", testMode)
 	return nil
 }
 
@@ -157,6 +162,12 @@ func startServer() {
 	}
 	defer CloseDB()
 
+	// Load config masks into memory for fast Mesa number lookup
+	if err := LoadConfigMasks(); err != nil {
+		log.Printf("Warning: Failed to load config masks: %v", err)
+		log.Println("Card to Mesa number lookup may not work correctly")
+	}
+
 	r := mux.NewRouter()
 
 	// API endpoints
@@ -181,7 +192,37 @@ func activateHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Activate request for card: %s", cardNum)
 
-	// TODO: Implement database logic for activation
+	if testMode {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "OK")
+		return
+	}
+
+	// Find Mesa number from card number using the in-memory mask map
+	mesaId, found := FindMesaNumber(cardNum)
+	if !found {
+		log.Printf("No Mesa number found for card: %s", cardNum)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "ERROR")
+		return
+	}
+	log.Printf("Found Mesa number %d for card: %s", mesaId, cardNum)
+
+	// Validate card in database using the Mesa number
+	valid, err := ValidateCardInDatabase(fmt.Sprintf("%d", mesaId))
+	if err != nil {
+		log.Printf("Error validating card in database: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "ERROR")
+		return
+	}
+
+	if !valid {
+		log.Printf("Card validation failed for Mesa: %d", mesaId)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "ERROR")
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "OK")
