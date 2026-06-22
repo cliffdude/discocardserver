@@ -20,8 +20,8 @@ db_name = xd
 db_host = localhost
 db_port = 3306
 db_user = root
-db_pass = impactfree
-DB_PASS = mydbpassword
+db_pass = mydbpassword
+
 ```
 
 ## Building

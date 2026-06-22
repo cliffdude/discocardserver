@@ -167,7 +167,8 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 			log.Printf("Updated status to 4 for card: %s", cardNum)
 			return true, nil
 		}
-		// Status is not 0, need to create new entry
+		// Status is not 0, card is already activated
+		return false, fmt.Errorf("Card already activated")
 	} else if err != sql.ErrNoRows {
 		// Some other error occurred
 		return false, fmt.Errorf("failed to query database: %w", err)

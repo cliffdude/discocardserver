@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -23,15 +25,16 @@ const (
 )
 
 var (
-	configPath string
-	dbConfig   DatabaseConfig
-	testMode   bool
-	enableFoto bool
-	cameraIP   string
-	cameraPort string
-	cameraUser string
-	cameraPass string
-	photoDir   string
+	configPath  string
+	dbConfig    DatabaseConfig
+	testMode    bool
+	enableFoto  bool
+	cameraIP    string
+	cameraPort  string
+	cameraUser  string
+	cameraPass  string
+	photoDir    string
+	cameraDelay int // Delay in seconds before capturing photo after setting overlay
 )
 
 type DatabaseConfig struct {
@@ -110,6 +113,7 @@ func loadConfig() error {
 	cameraUser = cameraSection.Key("camera_user").String()
 	cameraPass = cameraSection.Key("camera_pass").String()
 	photoDir = cameraSection.Key("photo_dir").String()
+	cameraDelay = cameraSection.Key("camera_delay").MustInt(1000) // Default to 1000ms (1 second)
 
 	log.Printf("Configuration loaded from: %s", configPath)
 	log.Printf("Test mode: %v", testMode)
@@ -251,6 +255,213 @@ func activateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// cameraLogin performs login to the camera and returns the auth cookie
+func cameraLogin(client *http.Client, baseURL, username, password string) (string, error) {
+	// First, get the login challenge
+	loginURL := fmt.Sprintf("%s/cgi-bin/global.login?userName=%s", baseURL, username)
+
+	req, err := http.NewRequest("GET", loginURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create login request: %w", err)
+	}
+
+	// Add browser headers
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("Connection", "keep-alive")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("login request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for 401 - this is expected
+	if resp.StatusCode == http.StatusUnauthorized {
+		authHeader := resp.Header.Get("WWW-Authenticate")
+		if authHeader == "" {
+			return "", fmt.Errorf("no WWW-Authenticate header in 401 response")
+		}
+
+		// Parse auth header to get realm
+		params := make(map[string]string)
+		parts := strings.Split(authHeader, ", ")
+		for _, part := range parts {
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) == 2 {
+				params[strings.TrimSpace(kv[0])] = strings.Trim(kv[1], `"`)
+			}
+		}
+
+		realm := params["realm"]
+		nonce := params["nonce"]
+		qop := params["qop"]
+		uri := "/cgi-bin/global.login?userName=" + username
+		method := "GET"
+
+		// Generate Digest auth response
+		ha1 := fmt.Sprintf("%x", md5.Sum([]byte(username+":"+realm+":"+password)))
+		ha2 := fmt.Sprintf("%x", md5.Sum([]byte(method+":"+uri)))
+
+		cnonce := fmt.Sprintf("%x", md5.Sum([]byte(time.Now().String())))
+		var response string
+		if qop == "auth" || qop == "auth-int" {
+			nc := "00000001"
+			response = fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+nc+":"+cnonce+":"+qop+":"+ha2)))
+		} else {
+			response = fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+ha2)))
+		}
+
+		// Build Authorization header
+		var authValue string
+		if qop == "auth" || qop == "auth-int" {
+			authValue = fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", qop=%s, nc=00000001, cnonce="%s", response="%s"`,
+				username, realm, nonce, uri, qop, cnonce, response)
+		} else {
+			authValue = fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
+				username, realm, nonce, uri, response)
+		}
+
+		// Retry login with Digest auth
+		req.Header.Set("Authorization", authValue)
+		resp2, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("login with digest failed: %w", err)
+		}
+		defer resp2.Body.Close()
+
+		// Check for session cookie
+		for _, cookie := range resp2.Cookies() {
+			if strings.Contains(cookie.Name, "session") || strings.Contains(cookie.Name, "DVRWeb") {
+				return cookie.Value, nil
+			}
+		}
+
+		// If no cookie, check response body for session info
+		body, _ := io.ReadAll(resp2.Body)
+		log.Printf("Login response: %s", string(body))
+
+		if resp2.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("login failed with status %d: %s", resp2.StatusCode, string(body))
+		}
+
+		return "", nil
+	}
+
+	// Check for session cookie on success
+	for _, cookie := range resp.Cookies() {
+		if strings.Contains(cookie.Name, "session") || strings.Contains(cookie.Name, "DVRWeb") {
+			return cookie.Value, nil
+		}
+	}
+
+	return "", fmt.Errorf("unexpected login response status: %d", resp.StatusCode)
+}
+
+// cameraRequest makes an authenticated request to the camera
+func cameraRequest(client *http.Client, req *http.Request, username, password string) (*http.Response, error) {
+	// Try Basic auth first
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	req.Header.Set("Authorization", "Basic "+auth)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// If Basic auth failed, try Digest auth
+	if resp.StatusCode == http.StatusUnauthorized {
+		authHeader := resp.Header.Get("WWW-Authenticate")
+		if authHeader != "" && strings.Contains(authHeader, "Digest") {
+			resp.Body.Close()
+
+			// Parse WWW-Authenticate header
+			authHeader = strings.TrimPrefix(authHeader, "Digest ")
+			parts := strings.Split(authHeader, ", ")
+			params := make(map[string]string)
+			for _, part := range parts {
+				kv := strings.SplitN(part, "=", 2)
+				if len(kv) == 2 {
+					params[strings.TrimSpace(kv[0])] = strings.Trim(kv[1], `"`)
+				}
+			}
+
+			// Generate Digest auth response
+			realm := params["realm"]
+			nonce := params["nonce"]
+			qop := params["qop"]
+			uri := req.URL.RequestURI()
+			method := req.Method
+			ha1 := fmt.Sprintf("%x", md5.Sum([]byte(username+":"+realm+":"+password)))
+			ha2 := fmt.Sprintf("%x", md5.Sum([]byte(method+":"+uri)))
+
+			var response string
+			cnonce := fmt.Sprintf("%x", md5.Sum([]byte(time.Now().String())))
+			if qop == "auth" || qop == "auth-int" {
+				nc := "00000001"
+				response = fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+nc+":"+cnonce+":"+qop+":"+ha2)))
+			} else {
+				response = fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+ha2)))
+			}
+
+			// Build Authorization header
+			var authValue string
+			if qop == "auth" || qop == "auth-int" {
+				authValue = fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", qop=%s, nc=00000001, cnonce="%s", response="%s"`,
+					username, realm, nonce, uri, qop, cnonce, response)
+			} else {
+				authValue = fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
+					username, realm, nonce, uri, response)
+			}
+
+			// Retry with Digest auth
+			req.Header.Set("Authorization", authValue)
+			return client.Do(req)
+		}
+	}
+
+	return resp, nil
+}
+
+// setCameraOverlay sets the channel title overlay on the camera
+func setCameraOverlay(client *http.Client, baseURL, username, password, overlayText string) error {
+	// According to the PDF, we need to set multiple parameters for VideoWidget
+	// Format: http://<ip>/cgi-bin/configManager.cgi?action=setConfig&<paramName>=<paramValue>[&<paramName>=<paramValue>...]
+
+	// Build URL with all required parameters
+	// We need to set: Name, EncodeBlend, and Rect (position)
+	setURL := fmt.Sprintf("%s/cgi-bin/configManager.cgi?action=setConfig&ChannelTitle[0].Name=%s", baseURL, overlayText)
+	//http://192.168.1.126/cgi-bin/configManager.cgi?action=setConfig&ChannelTitle[0].Name=blablabla
+	req, err := http.NewRequest("GET", setURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create overlay request: %w", err)
+	}
+
+	// Add browser headers
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Add("Accept", "*/*")
+
+	resp, err := cameraRequest(client, req, username, password)
+	if err != nil {
+		return fmt.Errorf("failed to set overlay: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("camera returned status %d for overlay: %s", resp.StatusCode, string(body))
+	}
+
+	// Check response body for "OK"
+	body, _ := io.ReadAll(resp.Body)
+	responseStr := string(body)
+	if !strings.Contains(responseStr, "OK") {
+		return fmt.Errorf("overlay setting failed: %s", responseStr)
+	}
+
+	return nil
+}
+
 func takefoto(cardNum string) {
 	// Create photos directory if it doesn't exist
 	if err := os.MkdirAll(photoDir, 0755); err != nil {
@@ -263,8 +474,28 @@ func takefoto(cardNum string) {
 	filename := fmt.Sprintf("%s_%s.jpg", cardNum, timestamp)
 	filepath := filepath.Join(photoDir, filename)
 
+	// Build camera base URL
+	cameraBaseURL := fmt.Sprintf("http://%s:%s", cameraIP, cameraPort)
+
+	// Create HTTP client
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	// Set overlay text with card number
+	overlayText := fmt.Sprintf("Card_%s", cardNum)
+	if err := setCameraOverlay(client, cameraBaseURL, cameraUser, cameraPass, overlayText); err != nil {
+		log.Printf("Failed to set camera overlay: %v", err)
+		// Continue anyway, overlay failure shouldn't prevent photo capture
+	}
+
+	// Wait for camera to apply the overlay change (configurable delay in milliseconds)
+	// This won't freeze the application since takefoto() runs in a goroutine
+	time.Sleep(time.Duration(cameraDelay) * time.Millisecond)
+
 	// Build camera snapshot URL
-	cameraURL := fmt.Sprintf("http://%s:%s/cgi-bin/snapshot.cgi", cameraIP, cameraPort)
+	cameraURL := fmt.Sprintf("%s/cgi-bin/snapshot.cgi", cameraBaseURL)
+	log.Printf("Camera URL: %s", cameraURL)
 
 	// Create HTTP request
 	req, err := http.NewRequest("GET", cameraURL, nil)
@@ -273,21 +504,24 @@ func takefoto(cardNum string) {
 		return
 	}
 
-	// Add basic authentication
-	auth := base64.StdEncoding.EncodeToString([]byte(cameraUser + ":" + cameraPass))
-	req.Header.Add("Authorization", "Basic "+auth)
+	// Add common browser headers that cameras often require
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+	req.Header.Add("Accept", "image/*")
+	req.Header.Add("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Add("Connection", "keep-alive")
 
-	// Send request
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	// Send request with auth support
+	resp, err := cameraRequest(client, req, cameraUser, cameraPass)
 	if err != nil {
 		log.Printf("Failed to capture photo from camera: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
+	log.Printf("Camera response status: %d", resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Camera returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Camera response body: %s", string(body))
 		return
 	}
 
