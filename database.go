@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -198,4 +201,159 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 
 	log.Printf("Created new entry for card: %s", cardNum)
 	return true, nil
+}
+
+// CardStatusData represents the complete card status information
+type CardStatusData struct {
+	CardNumber         string     `json:"cardNumber"`
+	MesaNumber         string     `json:"mesaNumber"`
+	Status             string     `json:"status"`
+	PhotoUrl           string     `json:"photoUrl"`
+	Items              []CardItem `json:"items"`
+	TotalAmount        float64    `json:"totalAmount"`
+	MinimumConsumption float64    `json:"minimumConsumption"`
+}
+
+// CardItem represents an item on the card
+type CardItem struct {
+	Description string  `json:"description"`
+	Quantity    float64 `json:"quantity"`
+	Total       float64 `json:"total"`
+}
+
+// GetCardStatus retrieves complete card status information from the database
+func GetCardStatus(cardNum string) (*CardStatusData, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	// Find Mesa number from card number
+	mesaId, found := FindMesaNumber(cardNum)
+	if !found {
+		return nil, fmt.Errorf("card number not found in mask configuration")
+	}
+
+	mesaNum := fmt.Sprintf("%d", mesaId)
+
+	// Get current status from xconfigsalezonesareaobjects
+	var status int
+	statusQuery := "SELECT Status FROM xconfigsalezonesareaobjects WHERE Id = ?"
+	err := db.QueryRow(statusQuery, mesaNum).Scan(&status)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Card found in masks but not in saleszoneareaobjects table
+			return nil, fmt.Errorf("Cartão não ativado")
+		}
+		return nil, fmt.Errorf("failed to query card status: %w", err)
+	}
+
+	// Get items from documentsbodystmp
+	itemsQuery := "SELECT itemdescription, quantity, total FROM tmpdocumentstables WHERE SaleZoneAreaObjectid = ?"
+	rows, err := db.Query(itemsQuery, mesaNum)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query card items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []CardItem
+	var totalAmount float64
+
+	for rows.Next() {
+		var item CardItem
+		err := rows.Scan(&item.Description, &item.Quantity, &item.Total)
+		if err != nil {
+			log.Printf("Warning: failed to scan item: %v", err)
+			continue
+		}
+		items = append(items, item)
+		totalAmount += item.Total
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating items: %w", err)
+	}
+
+	// Get minimum consumption from seriesdiscount table
+	var minConsumption float64
+	minConsumptionQuery := "SELECT minconsumption FROM seriesdiscount WHERE ? BETWEEN startserie AND endserie"
+	err = db.QueryRow(minConsumptionQuery, mesaId).Scan(&minConsumption)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("No minimum consumption found for mesaID %d", mesaId)
+			minConsumption = 0.0
+		} else {
+			log.Printf("Warning: failed to query minimum consumption: %v", err)
+			minConsumption = 0.0
+		}
+	}
+
+	// Build card status data
+	cardStatus := &CardStatusData{
+		CardNumber:         cardNum,
+		MesaNumber:         mesaNum,
+		Status:             getStatusText(status),
+		PhotoUrl:           getPhotoUrl(cardNum),
+		Items:              items,
+		TotalAmount:        totalAmount,
+		MinimumConsumption: minConsumption,
+	}
+
+	return cardStatus, nil
+}
+
+// getStatusText converts status code to human-readable text
+func getStatusText(status int) string {
+	statusMap := map[int]string{
+		0: "Inativo",
+		1: "Consumo",
+		2: "Pago",
+		3: "Pendente",
+		4: "Ativado",
+	}
+
+	if text, found := statusMap[status]; found {
+		return text
+	}
+	return fmt.Sprintf("Unknown (%d)", status)
+}
+
+// getPhotoUrl constructs the URL for the card photo
+func getPhotoUrl(cardNum string) string {
+	// Check if photo directory is configured
+	if photoDir == "" {
+		return ""
+	}
+
+	// Look for photo files matching the card number pattern
+	// Photos are named like: 0002830333_20260622_084956.jpg
+	// We'll search for files starting with the card number
+	pattern := filepath.Join(photoDir, cardNum+"*.jpg")
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+
+	// Return the most recent photo (last modified)
+	var latestPhoto string
+	var latestModTime time.Time
+
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(latestModTime) {
+			latestModTime = info.ModTime()
+			latestPhoto = match
+		}
+	}
+
+	if latestPhoto == "" {
+		return ""
+	}
+
+	// Return relative path from static directory
+	// Assuming photos are served from /photos/ endpoint
+	return "/photos/" + filepath.Base(latestPhoto)
 }

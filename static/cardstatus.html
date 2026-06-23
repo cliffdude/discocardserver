@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Status - Disco Card Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #349600fb;
+            margin-bottom: 30px;
+        }
+
+        .logo-placeholder {
+            width: 200px;
+            height: 80px;
+            background: rgba(233, 69, 96, 0.2);
+            border: 2px dashed #73e945;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #8fe945;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #45e979;
+        }
+
+        .card-input-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .input-group label {
+            font-size: 16px;
+            font-weight: 600;
+            color: #45e997;
+        }
+
+        .card-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 18px;
+            border: 2px solid #45e96b;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .card-input:focus {
+            box-shadow: 0 0 20px rgba(69, 233, 140, 0.4);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .status-display {
+            display: none;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .status-display.active {
+            display: grid;
+        }
+
+        .card-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card-info {
+            flex: 1;
+        }
+
+        .photo-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e94560;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(233, 69, 96, 0.3);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 14px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #a0a0a0;
+        }
+
+        .info-value {
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .photo-container {
+            width: 320px;
+            height: 220px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 2px solid rgba(233, 69, 96, 0.3);
+        }
+
+        .photo-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-placeholder {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .items-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .items-grid {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .items-grid th {
+            background: rgba(233, 69, 96, 0.2);
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+            color: #e94560;
+            border-bottom: 2px solid #e94560;
+        }
+
+        .items-grid td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .items-grid tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .summary-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .summary-item {
+            background: rgba(233, 69, 96, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(233, 69, 96, 0.3);
+            text-align: center;
+        }
+
+        .summary-label {
+            font-size: 12px;
+            color: #a0a0a0;
+            margin-bottom: 5px;
+        }
+
+        .summary-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e94560;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #e94560;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .error-message {
+            display: none;
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff4444;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #ff4444;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .special-status-message {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            font-size: 72px;
+            font-weight: bold;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
+
+        .special-status-message.pago {
+            background-color: #1a4d1a;
+            color: #00ff00;
+            text-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+        }
+
+        .special-status-message.sem-consumo {
+            background-color: #1a4d1a;
+            color: #00ff00;
+            text-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .status-display {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .special-status-message {
+                font-size: 48px;
+                padding: 40px 20px;
+                letter-spacing: 2px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo-placeholder">
+                LOGO
+            </div>
+            <div class="title">Card Status</div>
+        </div>
+
+        <div class="card-input-section">
+            <div class="input-group">
+                <label for="cardInput">Scan Card Number</label>
+                <input 
+                    type="text" 
+                    id="cardInput" 
+                    class="card-input" 
+                    placeholder="Scan or enter card number..."
+                    autocomplete="off"
+                    autofocus
+                >
+            </div>
+            <div class="loading" id="loading">Loading card information...</div>
+            <div class="error-message" id="errorMessage"></div>
+        </div>
+
+        <div class="status-display" id="statusDisplay">
+            <div class="card-panel">
+                <div class="card-info">
+                    <div class="panel-title">Card Information</div>
+                    <div class="info-row">
+                        <span class="info-label">Card Number:</span>
+                        <span class="info-value" id="cardNumber">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Mesa Number:</span>
+                        <span class="info-value" id="mesaNumber">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Current Status:</span>
+                        <span class="info-value" id="currentStatus">-</span>
+                    </div>
+                </div>
+
+                <div class="photo-panel">
+                    <div class="photo-container" id="photoContainer">
+                        <div class="photo-placeholder">No photo available</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="items-section" id="itemsSection" style="display: none;">
+            <div class="panel-title">Card Items</div>
+            <table class="items-grid">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Quantity</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="itemsTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="summary-section" id="summarySection" style="display: none;">
+            <div class="panel-title">Summary</div>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="summary-label">Total Amount</div>
+                    <div class="summary-value" id="totalAmount">€0.00</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Minimum Consumption</div>
+                    <div class="summary-value" id="minimumConsumption">€0.00</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Balance</div>
+                    <div class="summary-value" id="balance">€0.00</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/cardstatus.js"></script>
+</body>
+</html>

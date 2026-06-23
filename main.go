@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -192,9 +193,19 @@ func startServer() {
 
 	r := mux.NewRouter()
 
+	// Serve static files (HTML, CSS, JS)
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
+	// Serve photos
+	r.PathPrefix("/photos/").Handler(http.StripPrefix("/photos/", http.FileServer(http.Dir(photoDir))))
+
+	// Serve the card status page
+	r.HandleFunc("/cardstatus", cardStatusPageHandler).Methods("GET")
+
 	// API endpoints
 	r.HandleFunc("/activate", activateHandler).Methods("GET", "POST")
 	r.HandleFunc("/status", statusHandler).Methods("GET", "POST")
+	r.HandleFunc("/api/cardstatus", cardStatusAPIHandler).Methods("GET")
 
 	// Health check endpoint
 	r.HandleFunc("/health", healthHandler).Methods("GET")
@@ -559,6 +570,37 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "OK")
+}
+
+// cardStatusPageHandler serves the card status HTML page
+func cardStatusPageHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/cardstatus.html")
+}
+
+// cardStatusAPIHandler handles API requests for card status information
+func cardStatusAPIHandler(w http.ResponseWriter, r *http.Request) {
+	cardNum := r.URL.Query().Get("cardnum")
+	if cardNum == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Card number is required"})
+		return
+	}
+
+	log.Printf("Card status API request for card: %s", cardNum)
+
+	// Get card status from database
+	cardStatus, err := GetCardStatus(cardNum)
+	if err != nil {
+		log.Printf("Error getting card status: %v", err)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(cardStatus)
 }
 
 func install() {
