@@ -239,10 +239,25 @@ func GetCardStatus(cardNum string) (*CardStatusData, error) {
 	var status int
 	statusQuery := "SELECT Status FROM xconfigsalezonesareaobjects WHERE Id = ?"
 	err := db.QueryRow(statusQuery, mesaNum).Scan(&status)
+
+	var items []CardItem
+	var totalAmount float64
+	var minConsumption float64
+
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Card found in masks but not in saleszoneareaobjects table
-			return nil, fmt.Errorf("Cartão não ativado")
+			// Card found in masks but not in saleszoneareaobjects table - not activated
+			// Return a valid response with status "Não ativado"
+			cardStatus := &CardStatusData{
+				CardNumber:         cardNum,
+				MesaNumber:         mesaNum,
+				Status:             "Não ativado",
+				PhotoUrl:           getPhotoUrl(cardNum),
+				Items:              []CardItem{},
+				TotalAmount:        0.0,
+				MinimumConsumption: 0.0,
+			}
+			return cardStatus, nil
 		}
 		return nil, fmt.Errorf("failed to query card status: %w", err)
 	}
@@ -254,9 +269,6 @@ func GetCardStatus(cardNum string) (*CardStatusData, error) {
 		return nil, fmt.Errorf("failed to query card items: %w", err)
 	}
 	defer rows.Close()
-
-	var items []CardItem
-	var totalAmount float64
 
 	for rows.Next() {
 		var item CardItem
@@ -274,7 +286,6 @@ func GetCardStatus(cardNum string) (*CardStatusData, error) {
 	}
 
 	// Get minimum consumption from seriesdiscount table
-	var minConsumption float64
 	minConsumptionQuery := "SELECT minconsumption FROM seriesdiscount WHERE ? BETWEEN startserie AND endserie"
 	err = db.QueryRow(minConsumptionQuery, mesaId).Scan(&minConsumption)
 	if err != nil {
@@ -356,4 +367,61 @@ func getPhotoUrl(cardNum string) string {
 	// Return relative path from static directory
 	// Assuming photos are served from /photos/ endpoint
 	return "/photos/" + filepath.Base(latestPhoto)
+}
+
+// AddCardMask creates a new card mask entry in the config table
+func AddCardMask(cardNum string, mesaNum int) (*ConfigMaskData, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	// Create the mask name
+	maskName := fmt.Sprintf("Mesa%d", mesaNum)
+
+	// Create the JSON data for the mask
+	maskData := ConfigMaskData{
+		MaskId:         mesaNum,
+		MaskName:       maskName,
+		MaskOrder:      mesaNum,
+		Mask:           cardNum,
+		Active:         true,
+		MaskType:       2,
+		ExplicitValue:  true,
+		Prefix:         "",
+		VariableLength: 0,
+		UseCheckDigit:  false,
+	}
+
+	// Marshal the mask data to JSON
+	dataJSON, err := json.Marshal(maskData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal mask data: %w", err)
+	}
+
+	// Insert into config table
+	insertQuery := `INSERT INTO config
+		(Id, SecondaryId, Data, Description, UserId, PermissionType, SyncStamp, CloudSyncStamp)
+		VALUES (?, ?, ?, NULL, NULL, 0, NOW(), NULL)`
+
+	_, err = db.Exec(insertQuery, "BARCODEMASKCONFIG", mesaNum, string(dataJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert card mask: %w", err)
+	}
+
+	log.Printf("Created new card mask: Card=%s, Mesa=%d, Name=%s", cardNum, mesaNum, maskName)
+
+	// Update the in-memory mask map
+	maskMapMutex.Lock()
+	maskToMesaMap[cardNum] = mesaNum
+	maskMapMutex.Unlock()
+
+	return &maskData, nil
+}
+
+// CardMaskResponse represents the response data for add card API
+type CardMaskResponse struct {
+	CardNumber string `json:"cardNumber"`
+	MesaNumber int    `json:"mesaNumber"`
+	MaskName   string `json:"maskName"`
+	Error      string `json:"error,omitempty"`
 }

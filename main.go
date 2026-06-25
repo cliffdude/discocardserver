@@ -202,10 +202,14 @@ func startServer() {
 	// Serve the card status page
 	r.HandleFunc("/cardstatus", cardStatusPageHandler).Methods("GET")
 
+	// Serve the add card page
+	r.HandleFunc("/addcard", addCardPageHandler).Methods("GET")
+
 	// API endpoints
 	r.HandleFunc("/activate", activateHandler).Methods("GET", "POST")
 	r.HandleFunc("/status", statusHandler).Methods("GET", "POST")
 	r.HandleFunc("/api/cardstatus", cardStatusAPIHandler).Methods("GET")
+	r.HandleFunc("/api/addcard", addCardAPIHandler).Methods("GET")
 
 	// Health check endpoint
 	r.HandleFunc("/health", healthHandler).Methods("GET")
@@ -601,6 +605,60 @@ func cardStatusAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(cardStatus)
+}
+
+// addCardPageHandler serves the add card HTML page
+func addCardPageHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/addcard.html")
+}
+
+// addCardAPIHandler handles API requests for creating new card masks
+func addCardAPIHandler(w http.ResponseWriter, r *http.Request) {
+	cardNum := r.URL.Query().Get("cardnum")
+	if cardNum == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Card number is required"})
+		return
+	}
+
+	mesaNumStr := r.URL.Query().Get("mesanum")
+	if mesaNumStr == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Mesa number is required"})
+		return
+	}
+
+	// Parse mesa number
+	var mesaNum int
+	_, err := fmt.Sscanf(mesaNumStr, "%d", &mesaNum)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid mesa number"})
+		return
+	}
+
+	log.Printf("Add card API request: Card=%s, Mesa=%d", cardNum, mesaNum)
+
+	// Add card mask to database
+	maskData, err := AddCardMask(cardNum, mesaNum)
+	if err != nil {
+		log.Printf("Error adding card mask: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Create response
+	response := map[string]interface{}{
+		"cardNumber": cardNum,
+		"mesaNumber": mesaNum,
+		"maskName":   maskData.MaskName,
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 func install() {

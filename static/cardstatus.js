@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.error) {
                 console.log('Error in response:', data.error);
                 showError(data.error);
+                cardInput.value = '';
                 return;
             }
 
@@ -85,6 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error looking up card status:', error);
             showError('Failed to retrieve card status. Please try again.');
+            cardInput.value = '';
         } finally {
             hideLoading();
             // Keep focus on input for next card

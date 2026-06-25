@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Card - Disco Card Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #349600fb;
+            margin-bottom: 30px;
+        }
+
+        .logo-placeholder {
+            width: 200px;
+            height: 80px;
+            background: rgba(233, 69, 96, 0.2);
+            border: 2px dashed #73e945;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #8fe945;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #45e979;
+        }
+
+        .card-input-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            font-size: 16px;
+            font-weight: 600;
+            color: #45e997;
+        }
+
+        .card-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 18px;
+            border: 2px solid #45e96b;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .card-input:focus {
+            box-shadow: 0 0 20px rgba(69, 233, 140, 0.4);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .mesa-input {
+            border-color: #e94560;
+        }
+
+        .mesa-input:focus {
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.4);
+        }
+
+        .mesa-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .status-display {
+            display: none;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-display.active {
+            display: block;
+        }
+
+        .status-display.success {
+            border: 2px solid #4caf50;
+        }
+
+        .status-display.error {
+            border: 2px solid #ff4444;
+        }
+
+        .status-message {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .status-display.success .status-message {
+            color: #4caf50;
+        }
+
+        .status-display.error .status-message {
+            color: #ff4444;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 16px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #a0a0a0;
+        }
+
+        .info-value {
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #45e997;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .error-message {
+            display: none;
+            background: rgba(255, 68, 68, 0.2);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #ff4444;
+            font-weight: bold;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .counter-display {
+            background: rgba(233, 69, 96, 0.1);
+            border: 2px solid #e94560;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .counter-label {
+            font-size: 14px;
+            color: #a0a0a0;
+            margin-bottom: 5px;
+        }
+
+        .counter-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #e94560;
+        }
+
+        .instructions {
+            background: rgba(69, 233, 140, 0.1);
+            border: 2px solid #45e997;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #45e997;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo-placeholder">LOGO</div>
+            <div class="title">Add Card Mask</div>
+        </div>
+
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ul>
+                <li>Set the starting Mesa number in the second input box</li>
+                <li>Scan cards one by one - the cursor stays on the card number input</li>
+                <li>Each card scan creates a new mask with an auto-incrementing Mesa number</li>
+                <li>The Mesa number will automatically increment after each successful card addition</li>
+            </ul>
+        </div>
+
+        <div class="counter-display">
+            <div class="counter-label">Current Mesa Number</div>
+            <div class="counter-value" id="currentMesaDisplay">-</div>
+        </div>
+
+        <div class="card-input-section">
+            <div class="input-group">
+                <label for="cardInput">Card Number</label>
+                <input type="text" id="cardInput" class="card-input" placeholder="Scan or enter card number..." autocomplete="off">
+            </div>
+
+            <div class="input-group">
+                <label for="mesaInput">Starting Mesa Number</label>
+                <input type="number" id="mesaInput" class="card-input mesa-input" placeholder="Enter starting Mesa number..." autocomplete="off">
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            Processing card...
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="status-display" id="statusDisplay">
+            <div class="status-message" id="statusMessage"></div>
+            <div class="info-row">
+                <span class="info-label">Card Number:</span>
+                <span class="info-value" id="cardNumber">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Mesa Number:</span>
+                <span class="info-value" id="mesaNumber">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Mask Name:</span>
+                <span class="info-value" id="maskName">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/addcard.js"></script>
+</body>
+</html>
