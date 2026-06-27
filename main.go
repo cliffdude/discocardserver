@@ -20,16 +20,14 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-const (
-	serviceName = "DiscoCardServer"
-	serviceDesc = "Disco Card Server API Service"
-)
-
 var (
 	configPath  string
 	dbConfig    DatabaseConfig
 	testMode    bool
 	enableFoto  bool
+	port        string
+	serviceName string
+	serviceDesc string
 	cameraIP    string
 	cameraPort  string
 	cameraUser  string
@@ -80,13 +78,15 @@ func main() {
 }
 
 func loadConfig() error {
+	// Get executable directory for resolving relative paths
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+	exeDir := filepath.Dir(exePath)
+
 	// If configPath is relative, make it relative to executable
 	if !filepath.IsAbs(configPath) {
-		exePath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("failed to get executable path: %w", err)
-		}
-		exeDir := filepath.Dir(exePath)
 		configPath = filepath.Join(exeDir, configPath)
 	}
 
@@ -107,6 +107,9 @@ func loadConfig() error {
 	appSection := cfg.Section("APP")
 	testMode = appSection.Key("test_mode").MustBool(false)
 	enableFoto = appSection.Key("enablefoto").MustBool(false)
+	port = appSection.Key("port").MustString("8080")
+	serviceName = appSection.Key("service_name").MustString("DiscoCardServer")
+	serviceDesc = appSection.Key("service_desc").MustString("Disco Card Server API Service")
 
 	cameraSection := cfg.Section("CAMERA")
 	cameraIP = cameraSection.Key("camera_ip").String()
@@ -115,6 +118,13 @@ func loadConfig() error {
 	cameraPass = cameraSection.Key("camera_pass").String()
 	photoDir = cameraSection.Key("photo_dir").String()
 	cameraDelay = cameraSection.Key("camera_delay").MustInt(1000) // Default to 1000ms (1 second)
+
+	documentSection := cfg.Section("DOCUMENT")
+	SetDocumentConfig(
+		documentSection.Key("seriemin").MustInt(1),
+		documentSection.Key("seriemax").MustInt(9999),
+		documentSection.Key("documenttypeid").MustInt(15),
+	)
 
 	log.Printf("Configuration loaded from: %s", configPath)
 	log.Printf("Test mode: %v", testMode)
@@ -178,6 +188,23 @@ loop:
 }
 
 func startServer() {
+	// Get executable directory for resolving relative paths
+	exePath, err := os.Executable()
+	var exeDir string
+	if err != nil {
+		log.Printf("Warning: Failed to get executable path: %v", err)
+		exeDir = "."
+	} else {
+		exeDir = filepath.Dir(exePath)
+		log.Printf("Running from directory: %s", exeDir)
+	}
+
+	// Resolve photo directory relative to executable if not absolute
+	if !filepath.IsAbs(photoDir) {
+		photoDir = filepath.Join(exeDir, photoDir)
+		log.Printf("Using photo directory: %s", photoDir)
+	}
+
 	// Initialize database connection
 	if err := InitDB(); err != nil {
 		log.Printf("Warning: Failed to connect to database: %v", err)
@@ -193,8 +220,10 @@ func startServer() {
 
 	r := mux.NewRouter()
 
-	// Serve static files (HTML, CSS, JS)
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	// Serve static files (HTML, CSS, JS) - resolve relative to executable
+	staticDir := filepath.Join(exeDir, "static")
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	log.Printf("Serving static files from: %s", staticDir)
 
 	// Serve photos
 	r.PathPrefix("/photos/").Handler(http.StripPrefix("/photos/", http.FileServer(http.Dir(photoDir))))
@@ -214,7 +243,6 @@ func startServer() {
 	// Health check endpoint
 	r.HandleFunc("/health", healthHandler).Methods("GET")
 
-	port := "8080"
 	log.Printf("Starting HTTP server on port %s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Printf("HTTP server error: %v", err)
@@ -578,7 +606,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // cardStatusPageHandler serves the card status HTML page
 func cardStatusPageHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/cardstatus.html")
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Printf("Error getting executable path: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	filePath := filepath.Join(filepath.Dir(exePath), "static/cardstatus.html")
+	http.ServeFile(w, r, filePath)
 }
 
 // cardStatusAPIHandler handles API requests for card status information
@@ -609,7 +644,14 @@ func cardStatusAPIHandler(w http.ResponseWriter, r *http.Request) {
 
 // addCardPageHandler serves the add card HTML page
 func addCardPageHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/addcard.html")
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Printf("Error getting executable path: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	filePath := filepath.Join(filepath.Dir(exePath), "static/addcard.html")
+	http.ServeFile(w, r, filePath)
 }
 
 // addCardAPIHandler handles API requests for creating new card masks

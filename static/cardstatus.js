@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             itemsSection.style.display = 'block';
             summarySection.style.display = 'none';
             statusDisplay.classList.add('active');
+            setTimeout(hideResults, 5000);
             return;
         }
 
@@ -128,6 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
             itemsSection.style.display = 'block';
             summarySection.style.display = 'none';
             statusDisplay.classList.add('active');
+            setTimeout(hideResults, 5000);
             return;
         }
 
@@ -188,6 +190,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Show the status display
         statusDisplay.classList.add('active');
+
+        // Clear card data after 5 seconds
+        setTimeout(hideResults, 5000);
     }
 
     // UI Helper functions

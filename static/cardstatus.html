@@ -30,14 +30,14 @@
             align-items: center;
             padding: 20px 0;
             border-bottom: 2px solid #349600fb;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .logo-placeholder {
             width: 200px;
-            height: 80px;
-            background: rgba(233, 69, 96, 0.2);
-            border: 2px dashed #73e945;
+            height: 100px;
+			content:url(http://localhost:8080/static/CPVlogo2.png);
+            background: rgba(233, 69, 96, 0.3);
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -129,7 +129,7 @@
         .panel-title {
             font-size: 18px;
             font-weight: bold;
-            color: #e94560;
+            color: #8fe945;
             margin-bottom: 15px;
             padding-bottom: 8px;
             border-bottom: 1px solid rgba(233, 69, 96, 0.3);
@@ -162,7 +162,7 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
-            border: 2px solid rgba(233, 69, 96, 0.3);
+            border: 2px solid rgba(69, 233, 96, 0.3);
         }
 
         .photo-container img {
@@ -227,7 +227,7 @@
             background: rgba(233, 69, 96, 0.1);
             padding: 12px;
             border-radius: 8px;
-            border: 1px solid rgba(233, 69, 96, 0.3);
+            border: 1px solid rgba(69, 233, 96, 0.3);
             text-align: center;
         }
 
@@ -240,14 +240,14 @@
         .summary-value {
             font-size: 18px;
             font-weight: bold;
-            color: #e94560;
+            color: #eeeeee;
         }
 
         .loading {
             display: none;
             text-align: center;
             padding: 20px;
-            color: #e94560;
+            color: #8fe945;
         }
 
         .loading.active {
@@ -323,57 +323,56 @@
             <div class="logo-placeholder">
                 LOGO
             </div>
-            <div class="title">Card Status</div>
+            <div class="title">Estado Cartão</div>
         </div>
 
         <div class="card-input-section">
             <div class="input-group">
-                <label for="cardInput">Scan Card Number</label>
                 <input 
                     type="text" 
                     id="cardInput" 
                     class="card-input" 
-                    placeholder="Scan or enter card number..."
+                    placeholder="Ler ou inserir numbero do cartão..."
                     autocomplete="off"
                     autofocus
                 >
             </div>
-            <div class="loading" id="loading">Loading card information...</div>
+            <div class="loading" id="loading">A carregar dados...</div>
             <div class="error-message" id="errorMessage"></div>
         </div>
 
         <div class="status-display" id="statusDisplay">
             <div class="card-panel">
                 <div class="card-info">
-                    <div class="panel-title">Card Information</div>
+                    <div class="panel-title">Informação Cartão</div>
                     <div class="info-row">
-                        <span class="info-label">Card Number:</span>
+                        <span class="info-label">Numero Cartão:</span>
                         <span class="info-value" id="cardNumber">-</span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Mesa Number:</span>
+                        <span class="info-label">Numero XD:</span>
                         <span class="info-value" id="mesaNumber">-</span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Current Status:</span>
+                        <span class="info-label">Estado:</span>
                         <span class="info-value" id="currentStatus">-</span>
                     </div>
                 </div>
 
                 <div class="photo-panel">
                     <div class="photo-container" id="photoContainer">
-                        <div class="photo-placeholder">No photo available</div>
+                        <div class="photo-placeholder">Sem foto</div>
                     </div>
                 </div>
             </div>
 
             <div class="items-section" id="itemsSection" style="display: none;">
-            <div class="panel-title">Card Items</div>
+            <div class="panel-title">Consumo aberto</div>
             <table class="items-grid">
                 <thead>
                     <tr>
-                        <th>Description</th>
-                        <th>Quantity</th>
+                        <th>Descrição</th>
+                        <th>Quant</th>
                         <th>Total</th>
                     </tr>
                 </thead>
@@ -383,18 +382,18 @@
         </div>
 
         <div class="summary-section" id="summarySection" style="display: none;">
-            <div class="panel-title">Summary</div>
+            <div class="panel-title">Resumo</div>
             <div class="summary-grid">
                 <div class="summary-item">
-                    <div class="summary-label">Total Amount</div>
+                    <div class="summary-label">Total Consumo</div>
                     <div class="summary-value" id="totalAmount">€0.00</div>
                 </div>
                 <div class="summary-item">
-                    <div class="summary-label">Minimum Consumption</div>
+                    <div class="summary-label">Consumo Minimo</div>
                     <div class="summary-value" id="minimumConsumption">€0.00</div>
                 </div>
                 <div class="summary-item">
-                    <div class="summary-label">Balance</div>
+                    <div class="summary-label">Saldo</div>
                     <div class="summary-value" id="balance">€0.00</div>
                 </div>
             </div>

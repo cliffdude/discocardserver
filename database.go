@@ -16,6 +16,15 @@ import (
 
 var db *sql.DB
 
+// Document configuration and current serie number
+var (
+	serieMin       int
+	serieMax       int
+	documentTypeId int
+	currentSerie   int
+	serieMutex     sync.Mutex
+)
+
 // ConfigMaskData represents the JSON structure in the Data field of config table
 type ConfigMaskData struct {
 	MaskId         int    `json:"MaskId"`
@@ -35,6 +44,16 @@ var (
 	maskToMesaMap = make(map[string]int)
 	maskMapMutex  sync.RWMutex
 )
+
+// SetDocumentConfig sets the document configuration values
+func SetDocumentConfig(min, max, docType int) {
+	serieMutex.Lock()
+	defer serieMutex.Unlock()
+	serieMin = min
+	serieMax = max
+	documentTypeId = docType
+	currentSerie = min
+}
 
 // InitDB initializes the database connection using configuration from config.ini
 func InitDB() error {
@@ -178,6 +197,15 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 	}
 
 	// Card doesn't exist or status != 0, create new entry
+	// Get current serie number and increment for next card
+	serieMutex.Lock()
+	serieToUse := currentSerie
+	currentSerie++
+	if currentSerie > serieMax {
+		currentSerie = serieMin
+	}
+	serieMutex.Unlock()
+
 	insertQuery := `INSERT INTO xconfigsalezonesareaobjects
 		(Id, SaleZoneAreaId, Description, Status, Total, SubTotalReference,
 		XPrinter1, XPrinter2, XPrinter3, XPrinter4, XPrinter5, XPrinter6, XPrinter7, XPrinter8,
@@ -189,12 +217,12 @@ func ValidateCardInDatabase(cardNum string) (bool, error) {
 		SaleZoneAreaObjectId1, SaleZoneAreaObjectId2, Inactive, BlockTransferTo,
 		BlockTransferFrom, InitialUserOnly, InitialUser, PublicRelationsId, SchedulerResource,
 		ServiceTxSuspended, PrintOrderOnCloseAccount, CloudSyncStamp)
-		VALUES (?, 1, ?, 4, 0.000, '',
+		VALUES (?, 1, ?, 1, 0.000, '',
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		42, 15, 0, 1, 0.000000, '', 0, '0', NOW(), '0001-01-01 00:00:00', 0, '2024-05-26 21:19:35',
+		?, ?, 0, 0, 0.000000, '', 0, '0', NOW(), '0001-01-01 00:00:00', 0, '2024-05-26 21:19:35',
 		0, 0, 0, 0, 1, 0, 0, 0, 8, 0, '00000000-0000-0000-0000-000000000000', 0, 0, NULL)`
 
-	_, err = db.Exec(insertQuery, cardNum, cardNum)
+	_, err = db.Exec(insertQuery, cardNum, cardNum, serieToUse, documentTypeId)
 	if err != nil {
 		return false, fmt.Errorf("failed to insert new card entry: %w", err)
 	}
