@@ -12,4 +12,5 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

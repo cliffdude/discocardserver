@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 	"gopkg.in/ini.v1"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -46,6 +47,47 @@ type DatabaseConfig struct {
 
 type myservice struct{}
 
+// initLogger sets up file logging with rotation
+func initLogger() error {
+	// Get executable directory for log file location
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Set up lumberjack logger with rotation
+	logFile := filepath.Join(exeDir, "logs", "discocardserver.log")
+
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	// Configure lumberjack for log rotation
+	// MaxSize: maximum megabytes before rotation
+	// MaxBackups: maximum number of old log files to retain
+	// MaxAge: maximum number of days to retain old log files
+	// Compress: compress rotated log files with gzip
+	rotateLogger := &lumberjack.Logger{
+		Filename:   logFile,
+		MaxSize:    10,   // megabytes
+		MaxBackups: 5,    // keep 5 old log files
+		MaxAge:     30,   // days
+		Compress:   true, // compress rotated files
+	}
+
+	// Set both stdout and file output
+	multiWriter := io.MultiWriter(os.Stdout, rotateLogger)
+	log.SetOutput(multiWriter)
+
+	// Set log format with timestamp
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	log.Printf("Logger initialized. Log file: %s", logFile)
+	return nil
+}
+
 func main() {
 	flag.StringVar(&configPath, "config", "config.ini", "Path to configuration file")
 	consoleMode := flag.Bool("console", false, "Run in console mode")
@@ -54,6 +96,13 @@ func main() {
 	startService := flag.Bool("start", false, "Start service")
 	stopService := flag.Bool("stop", false, "Stop service")
 	flag.Parse()
+
+	// Initialize file logging with rotation
+	if err := initLogger(); err != nil {
+		// Fall back to stderr if logger initialization fails
+		log.Printf("Warning: Failed to initialize file logger: %v", err)
+		log.Printf("Continuing with default logging to stderr")
+	}
 
 	// Load configuration
 	if err := loadConfig(); err != nil {
